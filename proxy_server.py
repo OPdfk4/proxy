@@ -18,6 +18,7 @@ import socket
 import socketserver
 import sys
 import threading
+import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler
 
@@ -28,6 +29,8 @@ from http.server import BaseHTTPRequestHandler
 PROXY_PORT = int(os.environ.get("PROXY_PORT") or os.environ.get("PORT") or "1111")
 PROXY_BIND = os.environ.get("PROXY_BIND") or "0.0.0.0"
 PROXY_LOG = (os.environ.get("PROXY_LOG") or "true").lower() in ("true", "1", "yes")
+KEEP_ALIVE = (os.environ.get("KEEP_ALIVE") or "false").lower() in ("true", "1", "yes")
+KEEP_ALIVE_INTERVAL = int(os.environ.get("KEEP_ALIVE_INTERVAL") or "120")  # seconds
 
 TIMEOUT = 60  # seconds
 BUFFER_SIZE = 65536
@@ -214,6 +217,21 @@ class ProxyServer(socketserver.ThreadingTCPServer):
 # ---------------------------------------------------------------------------
 
 
+def _keep_alive_loop():
+    """Periodically pings an external endpoint to prevent the container from sleeping."""
+    while True:
+        time.sleep(KEEP_ALIVE_INTERVAL)
+        try:
+            conn = http.client.HTTPSConnection("httpbin.org", timeout=10)
+            conn.request("GET", "/status/200")
+            resp = conn.getresponse()
+            resp.read()
+            conn.close()
+            logger.info("KEEPALIVE  httpbin.org/status/200  %s", resp.status)
+        except Exception as e:
+            logger.info("KEEPALIVE  httpbin.org/status/200  failed (%s)", e)
+
+
 def main():
     server = ProxyServer((PROXY_BIND, PROXY_PORT), ProxyHandler)
 
@@ -223,6 +241,11 @@ def main():
 
     signal.signal(signal.SIGINT, _shutdown)
     signal.signal(signal.SIGTERM, _shutdown)
+
+    if KEEP_ALIVE:
+        t = threading.Thread(target=_keep_alive_loop, daemon=True)
+        t.start()
+        logger.info("Keep-alive enabled (every %ss)", KEEP_ALIVE_INTERVAL)
 
     logger.info("Proxy listening on %s:%s", PROXY_BIND, PROXY_PORT)
     try:

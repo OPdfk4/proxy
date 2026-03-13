@@ -9,3 +9,4 @@ restartPolicyMaxRetries = 5
 
 [deploy.envs]
 PROXY_PORT = "${{PORT}}"
+KEEP_ALIVE = "true"
