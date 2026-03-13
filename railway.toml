@@ -4,6 +4,5 @@ dockerfilePath = "Dockerfile"
 
 [deploy]
 startCommand = "python3 -u proxy_server.py"
-healthcheckPath = "/"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 5
